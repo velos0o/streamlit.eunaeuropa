@@ -1,3 +1,57 @@
+"""
+Dashboard de Análise de Negociações e Funil do Bitrix24
+"""
+import os
+import sys
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Carregar variáveis de ambiente do arquivo .env no INÍCIO do script
+# Para garantir que as variáveis estejam disponíveis para todos os módulos
+dotenv_path = Path('.env')
+if dotenv_path.exists():
+    print("Carregando variáveis de ambiente do arquivo .env principal")
+    load_dotenv(dotenv_path=dotenv_path)
+else:
+    alt_dotenv_path = Path('src/ui/streamlit/.env')
+    if alt_dotenv_path.exists():
+        print("Carregando variáveis de ambiente do arquivo .env alternativo")
+        load_dotenv(dotenv_path=alt_dotenv_path)
+    else:
+        print("ATENÇÃO: Nenhum arquivo .env encontrado!")
+
+# MODO DE DIAGNÓSTICO: Lê do .env ou usa False como padrão
+DIAGNOSTICO = os.environ.get("DIAGNOSTICO", "False").lower() == "true"
+
+# MODO CSV: Lê do .env ou usa False como padrão
+USAR_CSV = os.environ.get("USAR_CSV", "False").lower() == "true"
+
+# Se USE_BITRIX_CSV estiver definido, ele tem prioridade sobre USAR_CSV
+if "USE_BITRIX_CSV" in os.environ:
+    USAR_CSV = os.environ.get("USE_BITRIX_CSV", "False").lower() == "true"
+
+if DIAGNOSTICO:
+    print("MODO DE DIAGNÓSTICO ATIVADO - Informações detalhadas serão exibidas")
+    import logging
+    logging.basicConfig(level=logging.INFO)
+else:
+    # Configurar logging para mostrar apenas erros em produção
+    import logging
+    logging.basicConfig(level=logging.ERROR)
+
+if USAR_CSV:
+    print("USANDO ARQUIVO CSV COMO FONTE DE DADOS")
+    os.environ["USE_BITRIX_CSV"] = "True"
+else:
+    print("USANDO API DO BITRIX24 COMO FONTE DE DADOS")
+    os.environ["USE_BITRIX_CSV"] = "False"
+
+# Verificar se o token está definido
+if not os.environ.get("BITRIX_TOKEN"):
+    os.environ["BITRIX_TOKEN"] = "RuUSETRkbFD3whitfgMbioX8qjLgcdPubr"
+    print("Definindo token manualmente via código")
+
+# Agora importamos os demais módulos
 import streamlit as st
 import time
 from datetime import datetime

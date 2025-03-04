@@ -15,6 +15,14 @@ import warnings
 import locale
 import time
 
+# Tentativa de importar os módulos de integração com Bitrix24
+try:
+    from src.data.bitrix_integration import BitrixIntegration
+    from src.config.bitrix_config import BITRIX_BASE_URL, BITRIX_TOKEN, BITRIX_CATEGORY_ID, DEFAULT_DATA_DAYS
+    BITRIX_AVAILABLE = True
+except ImportError:
+    BITRIX_AVAILABLE = False
+
 # Função para gerar link de download para Excel
 def get_excel_download_link(df, filename="dados.xlsx", text="Baixar Excel"):
     """Gera um link para download de um DataFrame como arquivo Excel."""
@@ -118,8 +126,18 @@ FASE_COLORS = {
 }
 
 class ResponsavelDashboard:
-    """Classe para gerenciar a interface do dashboard de análise de responsáveis e funil"""
-
+    """Componente de dashboard para análise de responsáveis e funil do Bitrix24"""
+    
+    # Verificar se os métodos essenciais estão disponíveis
+    @classmethod
+    def __init_subclass__(cls):
+        # Verificar se o método show_responsavel_table existe
+        if not hasattr(cls, 'show_responsavel_table'):
+            raise AttributeError(
+                "Erro de configuração: Método 'show_responsavel_table' não está definido na classe ResponsavelDashboard. "
+                "Isso pode causar erros ao renderizar o dashboard."
+            )
+    
     @staticmethod
     def set_style():
         """Define o estilo CSS personalizado para o dashboard"""
@@ -483,10 +501,122 @@ class ResponsavelDashboard:
 
     @staticmethod
     def load_data():
-        """Carrega e processa os dados do CSV"""
+        """Carrega e processa os dados do Bitrix24 ou do CSV local"""
+        try:
+            # Primeiro, verificar se estamos em modo de teste/desenvolvimento (usando o arquivo CSV local)
+            use_csv = os.environ.get("USE_BITRIX_CSV", "False").lower() == "true" or st.session_state.get("use_csv", False)
+            
+            # Se a integração com Bitrix24 estiver disponível e não estivermos em modo CSV
+            if BITRIX_AVAILABLE and not use_csv:
+                return ResponsavelDashboard._load_from_bitrix()
+            else:
+                # Fallback para o método CSV original
+                return ResponsavelDashboard._load_from_csv()
+                
+        except Exception as e:
+            st.error(f"Erro ao carregar dados: {str(e)}")
+            # Em caso de erro na nova abordagem, tentar o método original como fallback
+            try:
+                return ResponsavelDashboard._load_from_csv()
+            except Exception as csv_error:
+                st.error(f"Erro no fallback para CSV: {str(csv_error)}")
+                return pd.DataFrame()  # Retorna DataFrame vazio se ambos os métodos falharem
+
+    @staticmethod
+    def _load_from_bitrix():
+        """Carrega dados diretamente da API do Bitrix24"""
+        # Mostrar spinner durante o carregamento
+        with st.spinner("Carregando dados do Bitrix24..."):
+            # Verificar se o token está configurado
+            if not BITRIX_TOKEN:
+                st.error("Token do Bitrix24 não configurado. Configure a variável de ambiente BITRIX_TOKEN.")
+                raise ValueError("Token do Bitrix24 não configurado")
+            
+            # Se a integração já estiver na sessão, reutilizá-la
+            if "bitrix_integration" not in st.session_state:
+                try:
+                    st.session_state.bitrix_integration = BitrixIntegration(
+                        base_url=BITRIX_BASE_URL,
+                        token=BITRIX_TOKEN
+                    )
+                except Exception as e:
+                    st.error(f"Erro ao inicializar integração com Bitrix24: {str(e)}")
+                    raise e
+            
+            try:
+                # Obter dados usando a integração
+                df = st.session_state.bitrix_integration.get_data(
+                    category_id=BITRIX_CATEGORY_ID,
+                    use_cache=True
+                )
+                
+                if df is None or df.empty:
+                    st.warning("Nenhum dado encontrado no Bitrix24.")
+                    return pd.DataFrame()
+                
+                # Verificar se o campo ID existe no DataFrame
+                if "ID" not in df.columns:
+                    st.error("Campo 'ID' não encontrado nos dados do Bitrix24.")
+                    st.write("Colunas disponíveis:", df.columns.tolist())
+                    # Tentar usar outro campo como ID, se existir
+                    if "id" in df.columns:
+                        st.info("Usando o campo 'id' (minúsculo) como substituto.")
+                        df = df.rename(columns={"id": "ID"})
+                    else:
+                        # Criar um ID sequencial se não existir
+                        st.info("Criando um campo ID sequencial.")
+                        df["ID"] = range(1, len(df) + 1)
+                
+                # Converter colunas de data para datetime se ainda não estiverem
+                for col in ['Criado', 'Modificado']:
+                    if col in df.columns and df[col].dtype != 'datetime64[ns]':
+                        df[col] = pd.to_datetime(df[col], errors='coerce')
+                
+                # Converter FECHADO para datetime, lidando com valores vazios
+                if 'FECHADO' in df.columns and df['FECHADO'].dtype != 'datetime64[ns]':
+                    df['FECHADO'] = pd.to_datetime(df['FECHADO'], errors='coerce')
+                
+                # Verificar e corrigir nomes de colunas essenciais
+                essential_columns = {
+                    "Responsável": "Responsável",
+                    "Fase": "Fase",
+                    "LINK ARVORE DA FAMÍLIA PLATAFORMA": "LINK ARVORE DA FAMÍLIA PLATAFORMA"
+                }
+                
+                for col, alias in essential_columns.items():
+                    if col not in df.columns:
+                        st.warning(f"Coluna '{col}' não encontrada nos dados.")
+                        # Tentar encontrar nomes alternativos
+                        alternatives = {
+                            "Responsável": ["ASSIGNED_BY_NAME", "responsible", "owner"],
+                            "Fase": ["STAGE_NAME", "stage", "status"],
+                            "LINK ARVORE DA FAMÍLIA PLATAFORMA": ["LINK_ARVORE", "family_tree_link", "link_arvore"]
+                        }
+                        
+                        for alt in alternatives.get(col, []):
+                            if alt in df.columns:
+                                st.info(f"Usando '{alt}' como substituto para '{col}'.")
+                                df[col] = df[alt]
+                                break
+                        else:
+                            # Se não encontrar uma alternativa, criar coluna vazia
+                            st.warning(f"Criando coluna vazia para '{col}'.")
+                            df[col] = ""
+                
+                return df
+                
+            except Exception as e:
+                import traceback
+                st.error(f"Erro ao obter dados do Bitrix24: {str(e)}")
+                st.write("Detalhes do erro:", traceback.format_exc())
+                raise e
+
+    @staticmethod
+    def _load_from_csv():
+        """Carrega dados do arquivo CSV local (método original)"""
         try:
             # Tentar diferentes caminhos de arquivo
-            file_paths = ["extratacao_bitrix24.csv", "data/extracao_bitrix24.csv"]
+            file_paths = ["extratacao_bitrix24.csv", "data/extratacao_bitrix24.csv"]
             df = None
             
             for file_path in file_paths:
@@ -509,105 +639,51 @@ class ResponsavelDashboard:
                 return pd.DataFrame()
             
             # Limpar os nomes das colunas
-            df.columns = [col.strip().replace('"', '') for col in df.columns]
-            
-            # Remover caracteres BOM (Byte Order Mark) do início das colunas
-            if df.columns[0].startswith('\ufeff'):
-                df.columns = [df.columns[0][1:]] + list(df.columns[1:])
-            
-            # Criar um mapeamento de nomes de colunas para padronizar
-            column_mapping = {}
-            
-            # Detectar coluna ID
-            id_column = None
-            for col in df.columns:
-                if 'ID' in col.upper():
-                    id_column = col
-                    column_mapping[col] = 'ID'
-                    break
-            
-            # Detectar coluna de link da família
-            link_column = None
-            for col in df.columns:
-                if 'LINK' in col.upper() and ('FAMILIA' in col.upper() or 'FAMÍLIA' in col.upper()):
-                    link_column = col
-                    column_mapping[col] = 'LINK ARVORE DA FAMÍLIA PLATAFORMA'
-                    break
-            
-            # Detectar coluna de responsável
-            resp_column = None
-            for col in df.columns:
-                if 'RESPONS' in col.upper():
-                    resp_column = col
-                    column_mapping[col] = 'Responsável'
-                    break
-            
-            # Detectar coluna de fase
-            fase_column = None
-            for col in df.columns:
-                if 'FASE' in col.upper():
-                    fase_column = col
-                    column_mapping[col] = 'Fase'
-                    break
-            
-            # Detectar coluna de data de criação
-            criado_column = None
-            for col in df.columns:
-                if 'CRIADO' in col.upper() or 'CRIAÇ' in col.upper() or 'DATA' in col.upper():
-                    criado_column = col
-                    column_mapping[col] = 'Criado'
-                    break
-            
-            # Detectar coluna de reunião
-            reuniao_column = None
-            for col in df.columns:
-                if 'REUNI' in col.upper():
-                    reuniao_column = col
-                    column_mapping[col] = 'REUNIÃO'
-                    break
-            
-            # Detectar coluna de fechamento
-            fechado_column = None
-            for col in df.columns:
-                if 'FECH' in col.upper():
-                    fechado_column = col
-                    column_mapping[col] = 'FECHADO'
-                    break
-            
-            # Renomear colunas
-            df = df.rename(columns=column_mapping)
-            
-            # Remover colunas vazias
-            df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
-            
-            # Converter data de criação para datetime
-            try:
-                if 'Criado' in df.columns:
-                    df['Criado'] = pd.to_datetime(df['Criado'], dayfirst=True, errors='coerce')
-                else:
-                    st.warning("Coluna 'Criado' não encontrada no arquivo CSV.")
-            except Exception as e:
-                st.warning(f"Erro ao converter coluna 'Criado' para datetime: {str(e)}")
-            
-            # Converter data de fechamento para datetime (se existir)
-            try:
-                if 'FECHADO' in df.columns:
-                    df['FECHADO'] = pd.to_datetime(df['FECHADO'], dayfirst=True, errors='coerce')
-            except Exception as e:
-                st.warning(f"Erro ao converter coluna 'FECHADO' para datetime: {str(e)}")
-            
-            # Retirar espaços extras das strings
-            for col in ['Responsável', 'Fase']:
-                if col in df.columns:
-                    df[col] = df[col].astype(str).str.strip()
-                else:
-                    st.warning(f"Coluna '{col}' não encontrada no arquivo CSV.")
-            
-            return df
-            
+            if not df.empty:
+                # Remover espaços em branco no início e fim dos nomes das colunas
+                df.columns = df.columns.str.strip()
+                
+                # Remover colunas sem nome ou vazias
+                df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+                
+                # Verificar se existem as colunas esperadas
+                expected_columns = ["ID", "LINK ARVORE DA FAMÍLIA PLATAFORMA", "Criado", 
+                                    "Responsável", "Fase", "REUNIÃO", "FECHADO", "Modificado"]
+                
+                missing_columns = [col for col in expected_columns if col not in df.columns]
+                if missing_columns:
+                    # Log silencioso para não poluir a interface
+                    print(f"Aviso: Colunas esperadas não encontradas: {missing_columns}")
+                
+                # Certifique-se de que ID é uma coluna
+                if "ID" not in df.columns:
+                    print("Aviso: Coluna ID não encontrada. Criando coluna ID sequencial.")
+                    df["ID"] = range(1, len(df) + 1)
+                
+                # Converter colunas de data para datetime se forem strings
+                date_columns = ["Criado", "Modificado", "FECHADO"]
+                for col in date_columns:
+                    if col in df.columns and df[col].dtype != 'datetime64[ns]':
+                        try:
+                            df[col] = pd.to_datetime(df[col], errors='coerce')
+                        except Exception as e:
+                            print(f"Aviso: Não foi possível converter a coluna {col} para data: {str(e)}")
+                
+                # Retirar espaços extras das strings
+                for col in df.columns:
+                    if df[col].dtype == 'object':
+                        df[col] = df[col].str.strip()
+                
+                return df
+            else:
+                st.error("DataFrame vazio após processamento.")
+                return pd.DataFrame()
+                
         except Exception as e:
-            st.error(f"Erro ao carregar dados: {str(e)}")
-            return pd.DataFrame()  # Retorna DataFrame vazio em caso de erro
+            st.error(f"Erro ao carregar dados do CSV: {str(e)}")
+            import traceback
+            print(traceback.format_exc())  # Log em console em vez de UI
+            return pd.DataFrame()
     
     @staticmethod
     def calc_cards_sem_modificacao(df):
@@ -1113,7 +1189,7 @@ class ResponsavelDashboard:
     
     @staticmethod
     def show_responsavel_chart(df):
-        """Exibe apenas o funil de vendas por responsável"""
+        """Exibe gráficos de análise por responsável"""
         try:
             # Verificar se a coluna Responsável existe
             if "Responsável" not in df.columns:
@@ -1234,6 +1310,52 @@ class ResponsavelDashboard:
             st.error(f"Erro ao exibir gráficos de análise por responsável: {str(e)}")
             st.write("Detalhes do erro:", e)
             
+    @staticmethod
+    def show_responsavel_table(df):
+        """Exibe uma tabela detalhada com os dados por responsável e etapa do funil"""
+        st.subheader("Tabela Detalhada por Responsável e Etapa")
+        
+        if df.empty:
+            st.warning("Não há dados disponíveis para exibir na tabela.")
+            return
+        
+        # Preparar os dados para a tabela
+        pivot_df = df.pivot_table(
+            index='Responsável',
+            columns='Fase',
+            values='ID',
+            aggfunc='count',
+            fill_value=0
+        ).reset_index()
+        
+        # Adicionar coluna de total
+        pivot_df['Total'] = pivot_df.iloc[:, 1:].sum(axis=1)
+        
+        # Ordenar por total (decrescente)
+        pivot_df = pivot_df.sort_values('Total', ascending=False)
+        
+        # Exibir a tabela com formatação
+        st.dataframe(
+            pivot_df,
+            use_container_width=True,
+            column_config={
+                "Responsável": st.column_config.TextColumn("Responsável"),
+                "Total": st.column_config.NumberColumn("Total", format="%d")
+            }
+        )
+        
+        # Adicionar botão para download
+        excel_data = io.BytesIO()
+        pivot_df.to_excel(excel_data, index=False)
+        excel_data.seek(0)
+        
+        st.download_button(
+            label="📥 Baixar tabela em Excel",
+            data=excel_data,
+            file_name="tabela_responsavel_etapa.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    
     @staticmethod
     def show_duplicated_links(df):
         """Identifica e exibe Famílias duplicados de famílias para correção no Bitrix24"""
@@ -1974,17 +2096,84 @@ class ResponsavelDashboard:
     def render(cls):
         """Renderiza o dashboard completo"""
         try:
-            # Carregar dados
-            df = cls.load_data()
-            
             # Definir estilo CSS
             cls.set_style()
             
             st.title("Dashboard de Análise de Negociações")
             
+            # Área de configuração da fonte de dados (se a integração com Bitrix24 estiver disponível)
+            if BITRIX_AVAILABLE:
+                with st.sidebar:
+                    st.markdown("### Configurações")
+                    
+                    # Opções de fonte de dados
+                    data_source = st.radio(
+                        "Fonte de dados:",
+                        options=["API Bitrix24", "Arquivo CSV local"],
+                        index=0 if not st.session_state.get("use_csv", False) else 1,
+                        help="Selecione a fonte de dados para o dashboard."
+                    )
+                    
+                    # Atualizar a sessão com base na escolha
+                    st.session_state.use_csv = (data_source == "Arquivo CSV local")
+                    os.environ["USE_BITRIX_CSV"] = str(st.session_state.use_csv).lower()
+                    
+                    # Botão para atualizar os dados
+                    if st.button("🔄 Atualizar dados", help="Carrega novamente os dados da fonte selecionada"):
+                        if "bitrix_integration" in st.session_state:
+                            with st.spinner(f"Atualizando dados {'do CSV' if st.session_state.use_csv else 'do Bitrix24'}..."):
+                                try:
+                                    if not st.session_state.use_csv:
+                                        # Forçar atualização dos dados do Bitrix24
+                                        st.session_state.bitrix_integration.refresh_data(force_refresh=True)
+                                    
+                                    # Limpar o cache do Streamlit
+                                    st.cache_data.clear()
+                                    
+                                    st.success("Dados atualizados com sucesso!")
+                                except Exception as e:
+                                    st.error(f"Erro ao atualizar dados: {str(e)}")
+                    
+                    st.markdown("---")
+            
+            # Carregar dados
+            df = cls.load_data()
+            
             # Verificar se o DataFrame está vazio
             if df.empty:
-                st.error("Não foi possível carregar os dados. Verifique se o arquivo CSV está disponível e bem formatado.")
+                st.error("Não foi possível carregar os dados. Verifique a fonte de dados configurada.")
+                
+                # Se não houver dados e a integração com Bitrix24 estiver disponível
+                if BITRIX_AVAILABLE:
+                    if st.session_state.get("use_csv", False):
+                        st.warning("Certifique-se de que o arquivo CSV existe e está no formato correto.")
+                        cls.show_upload_instructions_section()
+                    else:
+                        st.warning("Certifique-se de que o token do Bitrix24 está configurado corretamente.")
+                        
+                        # Mostrar opção para testar conexão
+                        if st.button("🔧 Testar conexão com Bitrix24"):
+                            with st.spinner("Testando conexão..."):
+                                try:
+                                    from src.data.bitrix_integration import BitrixIntegration
+                                    test_integration = BitrixIntegration(
+                                        base_url=BITRIX_BASE_URL,
+                                        token=BITRIX_TOKEN
+                                    )
+                                    
+                                    # Tentar fazer uma requisição mínima
+                                    test_data = test_integration.connector._make_request("crm_deal", {"limit": 1})
+                                    
+                                    if test_data:
+                                        st.success("Conexão estabelecida com sucesso!")
+                                        st.json(test_data[0] if isinstance(test_data, list) and test_data else test_data)
+                                    else:
+                                        st.error("Conexão falhou. Não foi possível obter dados.")
+                                except Exception as e:
+                                    st.error(f"Erro ao testar conexão: {str(e)}")
+                                    import traceback
+                                    st.code(traceback.format_exc())
+                
                 return
             
             # Descrição do dashboard (versão reduzida)
@@ -1996,6 +2185,15 @@ class ResponsavelDashboard:
                 </p>
             </div>
             """, unsafe_allow_html=True)
+            
+            # Indicador da fonte de dados
+            if BITRIX_AVAILABLE:
+                fonte = "API Bitrix24" if not st.session_state.get("use_csv", False) else "Arquivo CSV local"
+                st.markdown(f"""
+                <div style="background-color: #F0F2F6; padding: 5px 10px; border-radius: 4px; margin-bottom: 10px; font-size: 12px; color: #555;">
+                    <strong>Fonte de dados:</strong> {fonte}
+                </div>
+                """, unsafe_allow_html=True)
             
             # Mostrar métricas principais com margem reduzida
             st.markdown('<div class="chart-container" style="margin-bottom: 5px;">', unsafe_allow_html=True)
@@ -2101,95 +2299,6 @@ class ResponsavelDashboard:
                 from { opacity: 0; transform: translateY(-5px); }
                 to { opacity: 1; transform: translateY(0); }
             }
-            
-            /* Estilo para os cards de métricas de duplicação */
-            .duplicados-header {
-                background-color: #fef2f2;
-                padding: 10px 15px;
-                border-radius: 8px;
-                margin-bottom: 10px;
-                border: 1px solid #fee2e2;
-            }
-
-            .duplicados-header h3 {
-                color: #dc2626;
-                font-size: 16px;
-                margin: 0;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-
-            .duplicados-metrics {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 10px;
-                margin: 10px 0;
-            }
-            
-            .duplicados-metric {
-                background: linear-gradient(135deg, #fff5f5 0%, #fef2f2 100%);
-                padding: 12px;
-                border-radius: 8px;
-                text-align: center;
-                border: 1px solid #fecaca;
-                box-shadow: 0 2px 4px rgba(220, 38, 38, 0.1);
-                transition: transform 0.2s ease;
-            }
-            
-            .duplicados-metric-label {
-                color: #991b1b;
-                font-size: 13px;
-                font-weight: 500;
-                margin-bottom: 5px;
-                text-transform: uppercase;
-            }
-            
-            .duplicados-metric-value {
-                color: #dc2626;
-                font-size: 28px;
-                font-weight: 700;
-                text-shadow: 0 1px 2px rgba(220, 38, 38, 0.1);
-                margin: 0;
-                line-height: 1;
-            }
-
-            .duplicados-metric-value:after {
-                content: "";
-                display: block;
-                width: 30px;
-                height: 2px;
-                background-color: #dc2626;
-                margin: 6px auto 0;
-                border-radius: 2px;
-            }
-
-            /* Ajuste para as tabelas */
-            .stDataFrame {
-                margin-top: 5px !important;
-                margin-bottom: 5px !important;
-            }
-
-            /* Ajuste para os gráficos */
-            .js-plotly-plot {
-                margin-top: 5px !important;
-                margin-bottom: 5px !important;
-            }
-
-            /* Redução de espaço nas colunas */
-            [data-testid="column"] {
-                padding: 0 3px !important;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-            
-            # Remove margin-top from footer
-            st.markdown("""
-            <style>
-            footer {
-                margin-top: 0 !important;
-                padding-top: 0 !important;
-            }
             </style>
             """, unsafe_allow_html=True)
             
@@ -2224,13 +2333,14 @@ class ResponsavelDashboard:
             st.markdown('<hr class="divisor-azul-grosso" />', unsafe_allow_html=True)
             
             # Adicionar footer com informações de fonte e atualização
-            st.markdown("""
+            fonte_info = "API Bitrix24" if BITRIX_AVAILABLE and not st.session_state.get("use_csv", False) else "Arquivo CSV Local"
+            st.markdown(f"""
             <div class="footer" style="margin-top: 8px; border-top: 3px solid var(--cor-azul-medio); padding-top: 12px;">
                 <p style="color: #666; font-size: 12px; text-align: center;">
-                    Fonte: Dados extraídos do sistema Bitrix24 • Última atualização: {:%d/%m/%Y %H:%M}
+                    Fonte: {fonte_info} • Última atualização: {datetime.now():%d/%m/%Y %H:%M}
                 </p>
             </div>
-            """.format(datetime.now()), unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
             
         except Exception as e:
             st.error(f"Erro ao renderizar o dashboard de responsáveis: {str(e)}")
@@ -2256,87 +2366,3 @@ class ResponsavelDashboard:
             # Exibir informações de debug
             for info in debug_info:
                 st.text(info)
-    
-    @staticmethod
-    def show_responsavel_table(df):
-        """Exibe tabela com responsáveis e etapas do funil de vendas"""
-        try:
-            # Verificar se as colunas Responsável e Fase existem
-            if "Responsável" not in df.columns or "Fase" not in df.columns:
-                st.warning("Colunas 'Responsável' ou 'Fase' não encontradas no arquivo CSV.")
-                return
-            
-            st.subheader("Tabela de Responsáveis por Etapas do Funil")
-            
-            # Obter a contagem de negócios por responsável e fase
-            tabela_pivot = pd.pivot_table(
-                df, 
-                values='ID', 
-                index=['Responsável'], 
-                columns=['Fase'], 
-                aggfunc='count',
-                fill_value=0
-            ).reset_index()
-            
-            # Garantir que todas as fases em FASES_ORDEM estão presentes na tabela
-            for fase in FASES_ORDEM:
-                if fase not in tabela_pivot.columns:
-                    tabela_pivot[fase] = 0
-            
-            # Reorganizar as colunas na ordem definida em FASES_ORDEM
-            colunas_ordenadas = ['Responsável'] + [col for col in FASES_ORDEM if col in tabela_pivot.columns]
-            tabela_pivot = tabela_pivot[colunas_ordenadas]
-            
-            # Adicionar coluna de total
-            tabela_pivot['Total'] = tabela_pivot.iloc[:, 1:].sum(axis=1)
-            
-            # Ordenar por total (decrescente)
-            tabela_pivot = tabela_pivot.sort_values(by='Total', ascending=False)
-            
-            # Formatar os valores numéricos para exibição
-            for col in tabela_pivot.columns:
-                if col != 'Responsável':
-                    tabela_pivot[col] = tabela_pivot[col].astype(int)
-            
-            # Calcular totais por coluna
-            totais_colunas = tabela_pivot.sum(numeric_only=True).to_frame().T
-            totais_colunas.insert(0, 'Responsável', 'TOTAL')
-            
-            # Adicionar linha de totais ao DataFrame
-            tabela_final = pd.concat([tabela_pivot, totais_colunas], ignore_index=True)
-            
-            # Formatar a linha de totais com estilo diferenciado
-            def highlight_total(val):
-                if val == 'TOTAL':
-                    return 'background-color: #E1F5FE; font-weight: bold;'
-                return ''
-            
-            # Exibir a tabela com destaque
-            st.dataframe(
-                tabela_final, 
-                use_container_width=True, 
-                hide_index=True,
-                column_config={
-                    "Responsável": st.column_config.TextColumn(
-                        "Responsável",
-                        width="medium",
-                    ),
-                    "Total": st.column_config.NumberColumn(
-                        "Total",
-                        format="%d",
-                        width="small",
-                    ),
-                }
-            )
-            
-            # Adicionar botão para download
-            excel_link = get_excel_download_link(tabela_final, filename="responsaveis_funil.xlsx", text="Exportar Excel")
-            st.markdown(excel_link, unsafe_allow_html=True)
-            
-        except Exception as e:
-            st.error(f"Erro ao gerar tabela de responsáveis: {str(e)}")
-            st.write("Detalhes do erro:", e)
-
-if __name__ == "__main__":
-    # Renderizar dashboard
-    ResponsavelDashboard.render()
