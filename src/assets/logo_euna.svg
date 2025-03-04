@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="600" viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Árvore -->
+  <path d="M 400,100 C 350,150 250,300 250,400 C 400,350 550,400 550,400 C 550,300 450,150 400,100" fill="#003399"/>
+  
+  <!-- Bandeiras -->
+  <!-- União Europeia -->
+  <circle cx="400" cy="150" r="30" fill="#003399"/>
+  <g transform="translate(385,135)">
+    <circle cx="15" cy="15" r="15" fill="#FFD700"/>
+    <g fill="#FFD700" transform="translate(15,15)">
+      <circle cx="0" cy="-12" r="2"/>
+      <circle cx="8.5" cy="-8.5" r="2"/>
+      <circle cx="12" cy="0" r="2"/>
+      <circle cx="8.5" cy="8.5" r="2"/>
+      <circle cx="0" cy="12" r="2"/>
+      <circle cx="-8.5" cy="8.5" r="2"/>
+      <circle cx="-12" cy="0" r="2"/>
+      <circle cx="-8.5" cy="-8.5" r="2"/>
+    </g>
+  </g>
+  
+  <!-- Croácia -->
+  <circle cx="500" cy="150" r="25" fill="white"/>
+  <rect x="487.5" y="137.5" width="25" height="25" fill="#FF0000"/>
+  <rect x="487.5" y="137.5" width="25" height="8.33" fill="#0000FF"/>
+  <rect x="487.5" y="154.17" width="25" height="8.33" fill="white"/>
+  
+  <!-- Itália -->
+  <circle cx="300" cy="200" r="25" fill="white"/>
+  <rect x="287.5" y="187.5" width="8.33" height="25" fill="#009246"/>
+  <rect x="295.83" y="187.5" width="8.33" height="25" fill="white"/>
+  <rect x="304.16" y="187.5" width="8.33" height="25" fill="#CE2B37"/>
+  
+  <!-- Reino Unido -->
+  <circle cx="250" cy="250" r="25" fill="#012169"/>
+  <path d="M 237.5,237.5 L 262.5,262.5 M 262.5,237.5 L 237.5,262.5" stroke="white" stroke-width="5"/>
+  <path d="M 250,225 L 250,275 M 225,250 L 275,250" stroke="white" stroke-width="8"/>
+  <path d="M 250,225 L 250,275 M 225,250 L 275,250" stroke="#C8102E" stroke-width="5"/>
+  
+  <!-- Texto -->
+  <text x="400" y="500" font-family="Arial" font-size="60" font-weight="bold" fill="#003399" text-anchor="middle">Eu na Europa</text>
+</svg>

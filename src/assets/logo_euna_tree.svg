@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="600" viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Tronco da árvore -->
+  <path d="M 400,500 L 400,200 C 400,200 350,250 300,300 C 250,350 250,400 250,400 L 400,400 L 550,400 C 550,400 550,350 500,300 C 450,250 400,200 400,200" fill="#003399"/>
+  
+  <!-- Bandeiras -->
+  <!-- União Europeia -->
+  <circle cx="400" cy="150" r="30" fill="#003399"/>
+  <g transform="translate(385,135)">
+    <circle cx="15" cy="15" r="15" fill="#FFD700"/>
+    <g fill="#FFD700" transform="translate(15,15)">
+      <circle cx="0" cy="-12" r="2"/>
+      <circle cx="8.5" cy="-8.5" r="2"/>
+      <circle cx="12" cy="0" r="2"/>
+      <circle cx="8.5" cy="8.5" r="2"/>
+      <circle cx="0" cy="12" r="2"/>
+      <circle cx="-8.5" cy="8.5" r="2"/>
+      <circle cx="-12" cy="0" r="2"/>
+      <circle cx="-8.5" cy="-8.5" r="2"/>
+    </g>
+  </g>
+  
+  <!-- Croácia -->
+  <circle cx="500" cy="150" r="25" fill="white"/>
+  <rect x="487.5" y="137.5" width="25" height="25" fill="#FF0000"/>
+  <rect x="487.5" y="137.5" width="25" height="8.33" fill="#0000FF"/>
+  <rect x="487.5" y="154.17" width="25" height="8.33" fill="white"/>
+  
+  <!-- Itália -->
+  <circle cx="300" cy="200" r="25" fill="white"/>
+  <rect x="287.5" y="187.5" width="8.33" height="25" fill="#009246"/>
+  <rect x="295.83" y="187.5" width="8.33" height="25" fill="white"/>
+  <rect x="304.16" y="187.5" width="8.33" height="25" fill="#CE2B37"/>
+  
+  <!-- Reino Unido -->
+  <circle cx="250" cy="250" r="25" fill="#012169"/>
+  <path d="M 237.5,237.5 L 262.5,262.5 M 262.5,237.5 L 237.5,262.5" stroke="white" stroke-width="5"/>
+  <path d="M 250,225 L 250,275 M 225,250 L 275,250" stroke="white" stroke-width="8"/>
+  <path d="M 250,225 L 250,275 M 225,250 L 275,250" stroke="#C8102E" stroke-width="5"/>
+  
+  <!-- Portugal -->
+  <circle cx="450" cy="200" r="25" fill="#006600"/>
+  <rect x="437.5" y="187.5" width="25" height="25" fill="#FF0000"/>
+  <circle cx="450" cy="200" r="12.5" fill="#FFD700"/>
+  
+  <!-- Suécia -->
+  <circle cx="500" cy="250" r="25" fill="#006AA7"/>
+  <rect x="487.5" y="237.5" width="25" height="25" fill="#FECC00"/>
+  
+  <!-- Grécia -->
+  <circle cx="550" cy="300" r="25" fill="#0D5EAF"/>
+  <rect x="537.5" y="287.5" width="25" height="25" fill="white"/>
+  <rect x="537.5" y="295.83" width="25" height="8.33" fill="#0D5EAF"/>
+  
+  <!-- Espanha -->
+  <circle cx="450" cy="300" r="25" fill="#AA151B"/>
+  <rect x="437.5" y="287.5" width="25" height="25" fill="#F1BF00"/>
+  <rect x="437.5" y="295.83" width="25" height="8.33" fill="#AA151B"/>
+  
+  <!-- Suíça -->
+  <circle cx="250" cy="300" r="25" fill="#FF0000"/>
+  <path d="M 237.5,300 L 262.5,300 M 250,287.5 L 250,312.5" stroke="white" stroke-width="5"/>
+  
+  <!-- França -->
+  <circle cx="300" cy="300" r="25" fill="white"/>
+  <rect x="287.5" y="287.5" width="8.33" height="25" fill="#002395"/>
+  <rect x="295.83" y="287.5" width="8.33" height="25" fill="white"/>
+  <rect x="304.16" y="287.5" width="8.33" height="25" fill="#ED2939"/>
+  
+  <!-- Bélgica -->
+  <circle cx="350" cy="300" r="25" fill="#000000"/>
+  <rect x="337.5" y="287.5" width="8.33" height="25" fill="#000000"/>
+  <rect x="345.83" y="287.5" width="8.33" height="25" fill="#FFD700"/>
+  <rect x="354.16" y="287.5" width="8.33" height="25" fill="#FF0000"/>
+</svg>
