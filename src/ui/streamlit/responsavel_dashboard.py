@@ -11,6 +11,7 @@ import traceback
 import sys
 import locale
 import io  # Adicionando a importação do módulo io
+import base64  # Adicionando a importação do módulo base64
 
 # Tentar definir locale para o Brasil - para formatação de data
 try:
@@ -103,6 +104,22 @@ FASES_FECHAMENTO = ['VALIDADO ENVIAR FINANCEIRO', 'ASSINADO']
 FASES_ORDEM = ['REUNIÃO AGENDADA', 'EM NEGOCIAÇÃO', 'ORÇAMENTO', 'REUNIÃO REALIZADA', 
                'VALIDANDO ADENDO', 'CRIAR ADENDO', 'EM ASSINATURA', 'VALIDADO ENVIAR FINANCEIRO', 'ASSINADO', 
                'PERDA NA NEGOCIAÇÃO', 'DESISTÊNCIA', 'INVIÁVEL']
+
+# Definição das cores para cada fase no gráfico de funil
+FASE_COLORS = {
+    'REUNIÃO AGENDADA': '#4CAF50',        # Verde
+    'EM NEGOCIAÇÃO': '#2196F3',           # Azul
+    'ORÇAMENTO': '#9C27B0',               # Roxo
+    'REUNIÃO REALIZADA': '#FF9800',       # Laranja
+    'VALIDANDO ADENDO': '#03A9F4',        # Azul claro
+    'CRIAR ADENDO': '#673AB7',            # Roxo profundo
+    'EM ASSINATURA': '#FFEB3B',           # Amarelo
+    'VALIDADO ENVIAR FINANCEIRO': '#8BC34A', # Verde claro
+    'ASSINADO': '#4CAF50',                # Verde
+    'PERDA NA NEGOCIAÇÃO': '#F44336',     # Vermelho
+    'DESISTÊNCIA': '#FF5722',             # Laranja profundo
+    'INVIÁVEL': '#795548'                 # Marrom
+}
 
 # Outras constantes
 CACHE_TIME = 3600  # 1 hora em segundos
