@@ -10,6 +10,7 @@ import logging
 import traceback
 import sys
 import locale
+import io  # Adicionando a importação do módulo io
 
 # Tentar definir locale para o Brasil - para formatação de data
 try:
@@ -79,12 +80,8 @@ try:
     # Verificar modo de diagnóstico nas secrets também
     if "DIAGNOSTICO" in st.secrets:
         DIAGNOSTICO = st.secrets["DIAGNOSTICO"].lower() == "true"
-    
-    # Verificar modo CSV nas secrets
-    if "USE_BITRIX_CSV" in st.secrets:
-        os.environ["USE_BITRIX_CSV"] = st.secrets["USE_BITRIX_CSV"]
 except Exception as e:
-    logger.warning(f"Erro ao tentar carregar configurações do Streamlit: {str(e)}")
+    logger.warning(f"Erro ao acessar secrets do Streamlit: {str(e)}")
 
 # Verificar modo CSV
 USE_BITRIX_CSV = os.environ.get("USE_BITRIX_CSV", "False").lower() == "true"
@@ -96,11 +93,16 @@ if DIAGNOSTICO:
     logger.info(f"BITRIX_CATEGORY_ID: {BITRIX_CATEGORY_ID}")
     logger.info(f"USE_BITRIX_CSV: {USE_BITRIX_CSV}")
 
-# Mapeamento de fases
+# Definição das listas de fases para análise
 FASES_ASSINATURA = ['ASSINADO', 'EM ASSINATURA', 'VALIDADO ENVIAR FINANCEIRO']
 FASES_NEGOCIACAO = ['EM NEGOCIAÇÃO', 'ORÇAMENTO', 'REUNIÃO REALIZADA', 'VALIDANDO ADENDO', 'CRIAR ADENDO']
 FASES_REUNIAO = ['REUNIÃO AGENDADA']
 FASES_FECHAMENTO = ['VALIDADO ENVIAR FINANCEIRO', 'ASSINADO']
+
+# Definição da ordem das fases para o gráfico de funil
+FASES_ORDEM = ['REUNIÃO AGENDADA', 'EM NEGOCIAÇÃO', 'ORÇAMENTO', 'REUNIÃO REALIZADA', 
+               'VALIDANDO ADENDO', 'CRIAR ADENDO', 'EM ASSINATURA', 'VALIDADO ENVIAR FINANCEIRO', 'ASSINADO', 
+               'PERDA NA NEGOCIAÇÃO', 'DESISTÊNCIA', 'INVIÁVEL']
 
 # Outras constantes
 CACHE_TIME = 3600  # 1 hora em segundos
