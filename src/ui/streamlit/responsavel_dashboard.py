@@ -8,6 +8,17 @@ import os
 import json
 import logging
 import traceback
+import sys
+import locale
+
+# Tentar definir locale para o Brasil - para formatação de data
+try:
+    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+except:
+    try:
+        locale.setlocale(locale.LC_ALL, 'Portuguese_Brazil.1252')
+    except:
+        pass
 
 # Configuração de logging
 logger = logging.getLogger("ResponsavelDashboard")
@@ -15,10 +26,26 @@ logger = logging.getLogger("ResponsavelDashboard")
 # Importar módulos necessários
 from src.data.bitrix_integration import BitrixIntegration
 
+# Função para formatar números com separador de milhar
+def formatar_numero(valor):
+    """Formata um número com separador de milhar."""
+    try:
+        if isinstance(valor, (int, float)):
+            return locale.format_string("%d", valor, grouping=True)
+        return str(valor)
+    except:
+        return str(valor)
+
 # Configurações do Bitrix24
 BITRIX_BASE_URL = os.environ.get("BITRIX_BASE_URL", "")
 BITRIX_TOKEN = os.environ.get("BITRIX_TOKEN", "")
 BITRIX_CATEGORY_ID = int(os.environ.get("BITRIX_CATEGORY_ID", 34))
+
+# Definir se a integração com Bitrix24 está disponível
+BITRIX_AVAILABLE = True  # Assumimos que a integração está disponível por padrão
+
+# Verificar modo de diagnóstico
+DIAGNOSTICO = os.environ.get("DIAGNOSTICO", "False").lower() == "true"
 
 # Carregar configurações do Streamlit, se disponíveis
 try:
@@ -48,23 +75,19 @@ try:
         if "BITRIX_CATEGORY_ID" in st.secrets:
             BITRIX_CATEGORY_ID = int(st.secrets["BITRIX_CATEGORY_ID"])
             logger.info("Carregou BITRIX_CATEGORY_ID das secrets diretas do Streamlit")
+    
+    # Verificar modo de diagnóstico nas secrets também
+    if "DIAGNOSTICO" in st.secrets:
+        DIAGNOSTICO = st.secrets["DIAGNOSTICO"].lower() == "true"
+    
+    # Verificar modo CSV nas secrets
+    if "USE_BITRIX_CSV" in st.secrets:
+        os.environ["USE_BITRIX_CSV"] = st.secrets["USE_BITRIX_CSV"]
 except Exception as e:
     logger.warning(f"Erro ao tentar carregar configurações do Streamlit: {str(e)}")
 
 # Verificar modo CSV
 USE_BITRIX_CSV = os.environ.get("USE_BITRIX_CSV", "False").lower() == "true"
-
-# Verificar modo de diagnóstico
-DIAGNOSTICO = os.environ.get("DIAGNOSTICO", "False").lower() == "true"
-
-# Tentar carregar das secrets do Streamlit também
-try:
-    if "USE_BITRIX_CSV" in st.secrets:
-        USE_BITRIX_CSV = st.secrets["USE_BITRIX_CSV"].lower() == "true"
-    if "DIAGNOSTICO" in st.secrets:
-        DIAGNOSTICO = st.secrets["DIAGNOSTICO"].lower() == "true"
-except Exception as e:
-    logger.warning(f"Erro ao verificar modo CSV/diagnóstico nas secrets: {str(e)}")
 
 if DIAGNOSTICO:
     logger.info("MODO DE DIAGNÓSTICO ATIVADO")
