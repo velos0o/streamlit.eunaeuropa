@@ -5,6 +5,7 @@ import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
+import streamlit as st
 
 # Carregar variáveis de ambiente do arquivo .env no INÍCIO do script
 # Para garantir que as variáveis estejam disponíveis para todos os módulos
@@ -18,7 +19,32 @@ else:
         print("Carregando variáveis de ambiente do arquivo .env alternativo")
         load_dotenv(dotenv_path=alt_dotenv_path)
     else:
-        print("ATENÇÃO: Nenhum arquivo .env encontrado!")
+        print("ATENÇÃO: Nenhum arquivo .env encontrado! Verificando secrets do Streamlit...")
+
+# Verificar se estamos no Streamlit Cloud e tentar carregar secrets
+try:
+    # Tentar carregar as secrets do Streamlit Cloud
+    if "bitrix" in st.secrets:
+        print("Carregando secrets do Streamlit Cloud")
+        # Para compatibilidade, transferir secrets para variáveis de ambiente
+        os.environ["BITRIX_BASE_URL"] = st.secrets["bitrix"]["base_url"]
+        os.environ["BITRIX_TOKEN"] = st.secrets["bitrix"]["token"]
+        os.environ["BITRIX_CATEGORY_ID"] = str(st.secrets["bitrix"]["category_id"])
+    elif "BITRIX_TOKEN" in st.secrets:
+        print("Carregando secrets diretas do Streamlit Cloud")
+        os.environ["BITRIX_BASE_URL"] = st.secrets["BITRIX_BASE_URL"]
+        os.environ["BITRIX_TOKEN"] = st.secrets["BITRIX_TOKEN"]
+        os.environ["BITRIX_CATEGORY_ID"] = str(st.secrets["BITRIX_CATEGORY_ID"])
+    
+    # Verificar outras configurações nas secrets
+    if "USE_BITRIX_CSV" in st.secrets:
+        os.environ["USE_BITRIX_CSV"] = st.secrets["USE_BITRIX_CSV"]
+    if "CACHE_DURATION_HOURS" in st.secrets:
+        os.environ["CACHE_DURATION_HOURS"] = str(st.secrets["CACHE_DURATION_HOURS"])
+    if "DIAGNOSTICO" in st.secrets:
+        os.environ["DIAGNOSTICO"] = st.secrets["DIAGNOSTICO"]
+except Exception as e:
+    print(f"Erro ao carregar secrets do Streamlit: {str(e)}")
 
 # MODO DE DIAGNÓSTICO: Lê do .env ou usa False como padrão
 DIAGNOSTICO = os.environ.get("DIAGNOSTICO", "False").lower() == "true"
@@ -48,8 +74,25 @@ else:
 
 # Verificar se o token está definido
 if not os.environ.get("BITRIX_TOKEN"):
-    os.environ["BITRIX_TOKEN"] = "RuUSETRkbFD3whitfgMbioX8qjLgcdPubr"
-    print("Definindo token manualmente via código")
+    print("ALERTA: Token do Bitrix24 não definido nas variáveis de ambiente!")
+    try:
+        if "bitrix" in st.secrets and "token" in st.secrets["bitrix"]:
+            os.environ["BITRIX_TOKEN"] = st.secrets["bitrix"]["token"]
+            print("Token recuperado das secrets do Streamlit na seção 'bitrix'")
+        elif "BITRIX_TOKEN" in st.secrets:
+            os.environ["BITRIX_TOKEN"] = st.secrets["BITRIX_TOKEN"]
+            print("Token recuperado das secrets do Streamlit (formato direto)")
+        else:
+            print("Token não encontrado nas secrets do Streamlit")
+    except Exception as e:
+        print(f"Erro ao tentar acessar secrets: {str(e)}")
+
+# Exibir informações de diagnóstico se o modo estiver ativado
+if DIAGNOSTICO:
+    print(f"BITRIX_BASE_URL: {os.environ.get('BITRIX_BASE_URL', 'Não definido')}")
+    print(f"BITRIX_TOKEN existente: {'Sim' if os.environ.get('BITRIX_TOKEN') else 'Não'}")
+    print(f"BITRIX_CATEGORY_ID: {os.environ.get('BITRIX_CATEGORY_ID', 'Não definido')}")
+    print(f"USE_BITRIX_CSV: {os.environ.get('USE_BITRIX_CSV', 'Não definido')}")
 
 # Agora importamos os demais módulos
 import streamlit as st

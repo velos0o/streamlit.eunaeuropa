@@ -4,6 +4,7 @@ import json
 import os
 from datetime import datetime
 import logging
+import streamlit as st
 
 # Configuração de logging
 logging.basicConfig(
@@ -26,6 +27,23 @@ class BitrixConnector:
             base_url: URL base da API do Bitrix24. Se None, será lido da variável de ambiente BITRIX_BASE_URL
             token: Token de autenticação. Se None, será lido da variável de ambiente BITRIX_TOKEN
         """
+        # Primeiro, tentar obter das secrets do Streamlit
+        try:
+            if "bitrix" in st.secrets:
+                logger.info("Tentando carregar configurações do Bitrix24 das secrets do Streamlit")
+                self.base_url = base_url or st.secrets["bitrix"]["base_url"]
+                self.token = token or st.secrets["bitrix"]["token"]
+                logger.info("Configurações carregadas das secrets do Streamlit (seção bitrix)")
+            elif "BITRIX_BASE_URL" in st.secrets:
+                logger.info("Tentando carregar configurações do Bitrix24 das secrets diretas do Streamlit")
+                self.base_url = base_url or st.secrets["BITRIX_BASE_URL"]
+                self.token = token or st.secrets["BITRIX_TOKEN"]
+                logger.info("Configurações carregadas das secrets diretas do Streamlit")
+        except Exception as e:
+            logger.warning(f"Erro ao tentar carregar das secrets do Streamlit: {str(e)}")
+            logger.info("Continuando com outras alternativas...")
+            
+        # Se não encontrou nas secrets ou houve erro, tentar das variáveis de ambiente
         self.base_url = base_url or os.environ.get("BITRIX_BASE_URL")
         self.token = token or os.environ.get("BITRIX_TOKEN")
         
@@ -35,12 +53,12 @@ class BitrixConnector:
         
         # Token manual como último recurso
         if not self.token:
-            self.token = "RuUSETRkbFD3whitfgMbioX8qjLgcdPubr"
-            logger.warning("Token não encontrado nas variáveis de ambiente! Usando token padrão definido no código.")
+            self.token = "0z1rgUWgNbR0e53G7T88D9A1gkDWGly7br"
+            logger.warning("Token não encontrado nas variáveis de ambiente ou secrets! Usando token padrão definido no código.")
         
         if not self.base_url:
             self.base_url = "https://eunaeuropacidadania.bitrix24.com.br/bitrix/tools/biconnector/pbi.php"
-            logger.warning("URL base não encontrada nas variáveis de ambiente! Usando URL padrão definida no código.")
+            logger.warning("URL base não encontrada nas variáveis de ambiente ou secrets! Usando URL padrão definida no código.")
             
         logger.info(f"BitrixConnector inicializado com URL base: {self.base_url}")
         logger.info(f"Token configurado: {'OK (não vazio)' if self.token else 'FALHA (vazio)'}")
@@ -75,7 +93,7 @@ class BitrixConnector:
             payload = json.dumps(query_params)
             
             logger.info("Enviando requisição POST...")
-            response = requests.post(url, headers=headers, data=payload)
+            response = requests.post(url, headers=headers, data=payload, timeout=30)
             
             # Verificar status da resposta
             logger.info(f"Status da resposta: {response.status_code}")
@@ -84,70 +102,153 @@ class BitrixConnector:
             response_text = response.text[:1000] + "..." if len(response.text) > 1000 else response.text
             logger.info(f"Resposta: {response_text}")
             
+            # Se a resposta for bem-sucedida, converter para JSON
             if response.status_code == 200:
                 try:
+                    # Aqui o retorno pode ser uma lista vazia, o que é válido
                     data = response.json()
+                    # Verificar se há erro específico no JSON
+                    if isinstance(data, dict) and "error" in data:
+                        logger.error(f"Erro na resposta do Bitrix24: {data['error']}")
+                        if "error_description" in data:
+                            logger.error(f"Descrição do erro: {data['error_description']}")
+                        # Registrar os secrets em uso (sem mostrar o token completo)
+                        logger.info(f"Token usado (primeiros 4 caracteres): {self.token[:4]}...")
+                        logger.info(f"URL base usada: {self.base_url}")
+                        
+                        # Adicionar mensagem na tela para o usuário
+                        if st._is_running:
+                            st.error(f"Erro na API do Bitrix24: {data.get('error')} - {data.get('error_description', '')}")
+                            
+                        return None
                     
-                    # Diagnóstico do tipo de resposta
-                    logger.info(f"Tipo de resposta: {type(data)}")
-                    
-                    # Verificar formato de matriz (onde o primeiro elemento são os cabeçalhos)
-                    if isinstance(data, list) and len(data) > 1 and isinstance(data[0], list):
-                        logger.info("Resposta encontrada no formato de matriz (array de arrays)")
-                        # Não fazemos conversão aqui, deixamos para os métodos específicos processarem
-                        return data
-                    
-                    # Verificar se a resposta contém dados válidos (outros formatos)
-                    if isinstance(data, list):
-                        logger.info(f"Requisição bem-sucedida: {len(data)} registros obtidos")
-                        # Mostrar amostra dos dados
-                        if data and len(data) > 0:
-                            sample = data[0]
-                            logger.info(f"Amostra do primeiro registro: {json.dumps(sample, indent=2)}")
-                        return data
-                    elif isinstance(data, dict):
-                        # A resposta pode ser um dicionário com uma chave contendo a lista
-                        logger.info(f"Resposta contém um dicionário. Chaves: {list(data.keys())}")
-                        
-                        # Verificar se há uma chave 'result' ou 'data' que contenha os resultados
-                        for key in ['result', 'data', 'items', 'deals', 'records']:
-                            if key in data and isinstance(data[key], list):
-                                logger.info(f"Encontrada lista na chave '{key}' com {len(data[key])} itens")
-                                return data[key]
-                        
-                        # Tentar encontrar qualquer lista dentro do dicionário
-                        for key, value in data.items():
-                            if isinstance(value, list) and value:
-                                logger.info(f"Encontrada lista na chave '{key}' com {len(value)} itens")
-                                return value
-                        
-                        # Se não encontrou nenhuma lista, verificar se o próprio dicionário tem os dados
-                        if 'ID' in data or 'id' in data:
-                            logger.info("O próprio dicionário parece conter um único registro")
-                            return [data]
-                        
-                        # Se chegou aqui, não encontrou listas úteis no dicionário
-                        logger.warning(f"Estrutura de resposta não reconhecida: {data}")
-                        return []
-                    else:
-                        logger.warning(f"Resposta não contém uma lista ou dicionário: {data}")
-                        return []
+                    logger.info(f"Dados obtidos com sucesso. Total de registros: {len(data) if isinstance(data, list) else 'N/A (não é lista)'}")
+                    return data
                 except json.JSONDecodeError as e:
                     logger.error(f"Erro ao decodificar resposta JSON: {str(e)}")
-                    logger.error(f"Conteúdo da resposta: {response.text[:500]}...")
+                    logger.error(f"Resposta recebida (primeiros 200 caracteres): {response.text[:200]}")
+                    
+                    # Adicionar mensagem na tela para o usuário
+                    if st._is_running:
+                        st.error(f"Erro ao processar resposta do Bitrix24: Formato inválido")
+                        st.code(response.text[:500], language="json")
+                    
                     return None
             else:
-                logger.error(f"Erro na requisição: {response.status_code} - {response.text}")
+                logger.error(f"Erro na requisição: {response.status_code} - {response.reason}")
+                logger.error(f"Resposta de erro: {response.text}")
+                
+                # Adicionar mensagem na tela para o usuário
+                if st._is_running:
+                    st.error(f"Erro na conexão com Bitrix24: {response.status_code} - {response.reason}")
+                
                 return None
-        
-        except requests.RequestException as e:
-            logger.error(f"Erro de conexão: {str(e)}")
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erro na requisição HTTP: {str(e)}")
+            # Informações detalhadas para ajudar no diagnóstico
+            error_type = type(e).__name__
+            logger.error(f"Tipo de erro: {error_type}")
+            
+            # Adicionar mensagem na tela para o usuário
+            if st._is_running:
+                st.error(f"Falha na conexão com o Bitrix24: {str(e)}")
+                st.info("Verifique se a URL e o token estão corretos e se há conexão com a internet.")
+            
             return None
         except Exception as e:
             logger.error(f"Erro inesperado: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
+            # Adicionar mensagem na tela para o usuário
+            if st._is_running:
+                st.error(f"Erro inesperado: {str(e)}")
+            
             return None
+    
+    def get_deals(self, filters=None, select=None, category_id=None):
+        """
+        Obtém negociações do CRM Bitrix24 de acordo com os filtros e campos informados.
+        
+        Args:
+            filters: Dicionário com filtros para as negociações
+            select: Lista de campos a serem retornados
+            category_id: ID da categoria de negócio no CRM
+            
+        Returns:
+            Uma lista com as negociações encontradas ou None em caso de erro
+        """
+        # Obter ID da categoria das variáveis de ambiente se não foi informado
+        if category_id is None:
+            try:
+                category_id = int(os.environ.get("BITRIX_CATEGORY_ID", 34))
+            except (ValueError, TypeError):
+                category_id = 34  # Valor padrão
+                
+        logger.info(f"Consultando negociações da categoria {category_id}")
+        
+        # Construir parâmetros da consulta
+        query_params = {
+            "FILTER": filters or {},
+            "SELECT": select or ["*"],
+        }
+        
+        # Adicionar filtro de categoria
+        if category_id is not None:
+            query_params["FILTER"]["CATEGORY_ID"] = category_id
+            
+        # Realizar a consulta
+        return self._make_request("crm_deal", query_params)
+    
+    def get_deal_fields(self):
+        """
+        Obtém a lista de campos disponíveis para negociações do CRM Bitrix24.
+        
+        Returns:
+            Um dicionário com os campos disponíveis ou None em caso de erro
+        """
+        logger.info("Consultando campos de negociações")
+        return self._make_request("crm_deal_fields", {})
+        
+    def get_deal_uf_fields(self):
+        """
+        Obtém a lista de campos personalizados para negociações do CRM Bitrix24.
+        
+        Returns:
+            Um dicionário com os campos personalizados ou None em caso de erro
+        """
+        logger.info("Consultando campos personalizados de negociações")
+        return self._make_request("crm_deal_uf", {})
+        
+    def get_users(self):
+        """
+        Obtém a lista de usuários do Bitrix24.
+        
+        Returns:
+            Uma lista com os usuários encontrados ou None em caso de erro
+        """
+        logger.info("Consultando usuários")
+        return self._make_request("user", {})
+        
+    def get_contacts(self, filters=None, select=None):
+        """
+        Obtém contatos do CRM Bitrix24 de acordo com os filtros e campos informados.
+        
+        Args:
+            filters: Dicionário com filtros para os contatos
+            select: Lista de campos a serem retornados
+            
+        Returns:
+            Uma lista com os contatos encontrados ou None em caso de erro
+        """
+        logger.info("Consultando contatos")
+        
+        # Construir parâmetros da consulta
+        query_params = {
+            "FILTER": filters or {},
+            "SELECT": select or ["*"],
+        }
+            
+        # Realizar a consulta
+        return self._make_request("crm_contact", query_params)
     
     def get_crm_deals(self, start_date, end_date, category_id=34, limit=1000, offset=0):
         """

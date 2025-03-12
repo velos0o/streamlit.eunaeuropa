@@ -3,127 +3,84 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
-import numpy as np
-import io
+from datetime import datetime, timedelta
 import os
-import re
-import base64
-from io import BytesIO
-import sys
-import warnings
-import locale
-import time
+import json
+import logging
+import traceback
 
-# Tentativa de importar os módulos de integração com Bitrix24
+# Configuração de logging
+logger = logging.getLogger("ResponsavelDashboard")
+
+# Importar módulos necessários
+from src.data.bitrix_integration import BitrixIntegration
+
+# Configurações do Bitrix24
+BITRIX_BASE_URL = os.environ.get("BITRIX_BASE_URL", "")
+BITRIX_TOKEN = os.environ.get("BITRIX_TOKEN", "")
+BITRIX_CATEGORY_ID = int(os.environ.get("BITRIX_CATEGORY_ID", 34))
+
+# Carregar configurações do Streamlit, se disponíveis
 try:
-    from src.data.bitrix_integration import BitrixIntegration
-    from src.config.bitrix_config import BITRIX_BASE_URL, BITRIX_TOKEN, BITRIX_CATEGORY_ID, DEFAULT_DATA_DAYS
-    BITRIX_AVAILABLE = True
-except ImportError:
-    BITRIX_AVAILABLE = False
-
-# Função para gerar link de download para Excel
-def get_excel_download_link(df, filename="dados.xlsx", text="Baixar Excel"):
-    """Gera um link para download de um DataFrame como arquivo Excel."""
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Ignorar warnings do pandas e openpyxl
-        warnings.simplefilter("ignore")
+    if "bitrix" in st.secrets:
+        if not BITRIX_BASE_URL:
+            BITRIX_BASE_URL = st.secrets["bitrix"]["base_url"]
+            logger.info("Carregou BITRIX_BASE_URL das secrets do Streamlit")
         
-        # Escrever o DataFrame para o Excel
-        df.to_excel(writer, index=False, sheet_name="Dados")
+        if not BITRIX_TOKEN:
+            BITRIX_TOKEN = st.secrets["bitrix"]["token"]
+            logger.info("Carregou BITRIX_TOKEN das secrets do Streamlit")
         
-        # Ajustar a largura das colunas automaticamente
-        worksheet = writer.sheets["Dados"]
-        for i, col in enumerate(df.columns):
-            # Calcular a largura máxima baseada no conteúdo
-            max_len = max(
-                df[col].astype(str).map(len).max(),
-                len(str(col))
-            ) + 2  # Adiciona um pouco de espaço extra
-            
-            # Ajustar a largura da coluna
-            worksheet.column_dimensions[chr(65 + i)].width = min(max_len, 50)  # Limita a largura a 50 caracteres
+        if "category_id" in st.secrets["bitrix"]:
+            BITRIX_CATEGORY_ID = int(st.secrets["bitrix"]["category_id"])
+            logger.info("Carregou BITRIX_CATEGORY_ID das secrets do Streamlit")
     
-    # Obter o valor do BytesIO como base64
-    b64 = base64.b64encode(output.getvalue()).decode()
-    
-    # Criar o link para download usando o estilo da classe excel-btn
-    href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{filename}" class="download-btn excel-btn">{text}</a>'
-    return href
+    # Ou das configurações diretas
+    elif "BITRIX_BASE_URL" in st.secrets:
+        if not BITRIX_BASE_URL:
+            BITRIX_BASE_URL = st.secrets["BITRIX_BASE_URL"]
+            logger.info("Carregou BITRIX_BASE_URL das secrets diretas do Streamlit")
+        
+        if not BITRIX_TOKEN:
+            BITRIX_TOKEN = st.secrets["BITRIX_TOKEN"]
+            logger.info("Carregou BITRIX_TOKEN das secrets diretas do Streamlit")
+        
+        if "BITRIX_CATEGORY_ID" in st.secrets:
+            BITRIX_CATEGORY_ID = int(st.secrets["BITRIX_CATEGORY_ID"])
+            logger.info("Carregou BITRIX_CATEGORY_ID das secrets diretas do Streamlit")
+except Exception as e:
+    logger.warning(f"Erro ao tentar carregar configurações do Streamlit: {str(e)}")
 
-# Ignorar avisos
-warnings.filterwarnings('ignore')
+# Verificar modo CSV
+USE_BITRIX_CSV = os.environ.get("USE_BITRIX_CSV", "False").lower() == "true"
 
-# Tentar definir locale para o Brasil - para formatação de data
+# Verificar modo de diagnóstico
+DIAGNOSTICO = os.environ.get("DIAGNOSTICO", "False").lower() == "true"
+
+# Tentar carregar das secrets do Streamlit também
 try:
-    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
-except:
-    try:
-        locale.setlocale(locale.LC_ALL, 'Portuguese_Brazil.1252')
-    except:
-        pass
+    if "USE_BITRIX_CSV" in st.secrets:
+        USE_BITRIX_CSV = st.secrets["USE_BITRIX_CSV"].lower() == "true"
+    if "DIAGNOSTICO" in st.secrets:
+        DIAGNOSTICO = st.secrets["DIAGNOSTICO"].lower() == "true"
+except Exception as e:
+    logger.warning(f"Erro ao verificar modo CSV/diagnóstico nas secrets: {str(e)}")
 
-# Função para formatar números com separador de milhar
-def formatar_numero(valor):
-    """Formata um número com separador de milhar."""
-    try:
-        if isinstance(valor, (int, float)):
-            return locale.format_string("%d", valor, grouping=True)
-        return str(valor)
-    except:
-        return str(valor)
+if DIAGNOSTICO:
+    logger.info("MODO DE DIAGNÓSTICO ATIVADO")
+    logger.info(f"BITRIX_BASE_URL: {BITRIX_BASE_URL}")
+    logger.info(f"BITRIX_TOKEN: {'[CONFIGURADO]' if BITRIX_TOKEN else '[NÃO CONFIGURADO]'}")
+    logger.info(f"BITRIX_CATEGORY_ID: {BITRIX_CATEGORY_ID}")
+    logger.info(f"USE_BITRIX_CSV: {USE_BITRIX_CSV}")
 
-# Definir um esquema de cores com melhor contraste
-THEME_COLORS = {
-    "primary": "#1E88E5",       # Azul principal mais escuro
-    "secondary": "#0D47A1",     # Azul secundário ainda mais escuro
-    "accent": "#FFC107",        # Amarelo para destaque
-    "background": "#FFFFFF",    # Fundo branco
-    "card": "#F8F9FA",          # Cinza muito claro para cartões
-    "text": "#212121",          # Texto quase preto
-    "text_secondary": "#424242" # Texto secundário cinza escuro
-}
+# Mapeamento de fases
+FASES_ASSINATURA = ['ASSINADO', 'EM ASSINATURA', 'VALIDADO ENVIAR FINANCEIRO']
+FASES_NEGOCIACAO = ['EM NEGOCIAÇÃO', 'ORÇAMENTO', 'REUNIÃO REALIZADA', 'VALIDANDO ADENDO', 'CRIAR ADENDO']
+FASES_REUNIAO = ['REUNIÃO AGENDADA']
+FASES_FECHAMENTO = ['VALIDADO ENVIAR FINANCEIRO', 'ASSINADO']
 
-# Lista de fases em ordem cronológica
-FASES_ORDEM = [
-    "REUNIÃO AGENDADA",
-    "REUNIÃO REALIZADA",
-    "EM NEGOCIAÇÃO",
-    "ORÇAMENTO",
-    "CRIAR ADENDO",
-    "VALIDANDO ADENDO",
-    "CLAUSULAS ESPECIAS",
-    "EM ASSINATURA",
-    "ASSINADO",
-    "VALIDADO ENVIAR FINANCEIRO",
-    "ENV. NOVO ADM",
-    "ASSINATURA INCOMPLETAS",
-    "REVERSÃO",
-    "DISTRATO APROVADO",
-    "ENV.. NOVO ADM"
-]
-
-# Cores para as fases do funil
-FASE_COLORS = {
-    "REUNIÃO AGENDADA": "#4CAF50",     # Verde
-    "REUNIÃO REALIZADA": "#8BC34A",    # Verde claro
-    "EM NEGOCIAÇÃO": "#2196F3",        # Azul
-    "ORÇAMENTO": "#03A9F4",            # Azul claro
-    "CRIAR ADENDO": "#FF9800",
-    "VALIDANDO ADENDO": "#FF9890",                # Laranja
-    "CLAUSULAS ESPECIAS": "#FF5722",   # Laranja escuro
-    "EM ASSINATURA": "#9C27B0",        # Roxo
-    "ASSINADO": "#673AB7",             # Roxo escuro
-    "VALIDADO ENVIAR FINANCEIRO": "#673AB7",              # Vermelho
-    "ENV. NOVO ADM": "#3F51B5",
-    "ASSINATURA INCOMPLETAS": "#3F51B5",
-    "REVERSÃO": "#3F51B5",
-    "DISTRATO APROVADO": "#3F51B5",
-    "ENV.. NOVO ADM": "#3F51B5"
-            # Azul escuro
-}
+# Outras constantes
+CACHE_TIME = 3600  # 1 hora em segundos
 
 class ResponsavelDashboard:
     """Componente de dashboard para análise de responsáveis e funil do Bitrix24"""
@@ -530,86 +487,77 @@ class ResponsavelDashboard:
             # Verificar se o token está configurado
             if not BITRIX_TOKEN:
                 st.error("Token do Bitrix24 não configurado. Configure a variável de ambiente BITRIX_TOKEN.")
+                if DIAGNOSTICO:
+                    st.info("Modo de diagnóstico ativado. Verifique as configurações:")
+                    st.write(f"BITRIX_BASE_URL: {BITRIX_BASE_URL}")
+                    st.write(f"BITRIX_CATEGORY_ID: {BITRIX_CATEGORY_ID}")
+                    st.write("Secrets disponíveis:", list(st.secrets.keys()) if hasattr(st, 'secrets') else "Nenhuma")
+                    if "bitrix" in st.secrets:
+                        st.write("Chaves na seção 'bitrix':", list(st.secrets["bitrix"].keys()))
                 raise ValueError("Token do Bitrix24 não configurado")
             
             # Se a integração já estiver na sessão, reutilizá-la
             if "bitrix_integration" not in st.session_state:
                 try:
+                    if DIAGNOSTICO:
+                        st.info("Criando nova instância de BitrixIntegration...")
+                        st.write(f"URL base: {BITRIX_BASE_URL}")
+                        st.write(f"Token configurado: {'Sim' if BITRIX_TOKEN else 'Não'}")
+                    
                     st.session_state.bitrix_integration = BitrixIntegration(
                         base_url=BITRIX_BASE_URL,
                         token=BITRIX_TOKEN
                     )
+                    
+                    if DIAGNOSTICO:
+                        st.success("BitrixIntegration inicializado com sucesso")
                 except Exception as e:
-                    st.error(f"Erro ao inicializar integração com Bitrix24: {str(e)}")
+                    error_msg = f"Erro ao inicializar integração com Bitrix24: {str(e)}"
+                    st.error(error_msg)
+                    if DIAGNOSTICO:
+                        st.error("Detalhes do erro:")
+                        st.code(traceback.format_exc())
+                        st.info("Variáveis de ambiente:")
+                        env_vars = {k: v for k, v in os.environ.items() if k.startswith("BITRIX")}
+                        st.json(env_vars)
                     raise e
             
             try:
-                # Obter dados usando a integração
-                df = st.session_state.bitrix_integration.get_data(
-                    category_id=BITRIX_CATEGORY_ID,
-                    use_cache=True
-                )
+                # Carregar dados do Bitrix24
+                if DIAGNOSTICO:
+                    st.info("Tentando carregar negociações do Bitrix24...")
+                
+                # Obter dados através da integração
+                df = st.session_state.bitrix_integration.get_deals_dataframe()
                 
                 if df is None or df.empty:
-                    st.warning("Nenhum dado encontrado no Bitrix24.")
-                    return pd.DataFrame()
+                    if DIAGNOSTICO:
+                        st.warning("Nenhum dado retornado da API do Bitrix24")
+                        st.info("Testando conexão básica...")
+                        try:
+                            # Teste básico de conexão
+                            connector = st.session_state.bitrix_integration.connector
+                            test_result = connector._make_request("crm_deal", {"limit": 1})
+                            st.write("Resultado do teste:", test_result)
+                        except Exception as e:
+                            st.error(f"Falha no teste de conexão: {str(e)}")
+                    st.error("Não foi possível carregar dados do Bitrix24.")
+                    return pd.DataFrame()  # Retornar DataFrame vazio
                 
-                # Verificar se o campo ID existe no DataFrame
-                if "ID" not in df.columns:
-                    st.error("Campo 'ID' não encontrado nos dados do Bitrix24.")
-                    st.write("Colunas disponíveis:", df.columns.tolist())
-                    # Tentar usar outro campo como ID, se existir
-                    if "id" in df.columns:
-                        st.info("Usando o campo 'id' (minúsculo) como substituto.")
-                        df = df.rename(columns={"id": "ID"})
-                    else:
-                        # Criar um ID sequencial se não existir
-                        st.info("Criando um campo ID sequencial.")
-                        df["ID"] = range(1, len(df) + 1)
-                
-                # Converter colunas de data para datetime se ainda não estiverem
-                for col in ['Criado', 'Modificado']:
-                    if col in df.columns and df[col].dtype != 'datetime64[ns]':
-                        df[col] = pd.to_datetime(df[col], errors='coerce')
-                
-                # Converter FECHADO para datetime, lidando com valores vazios
-                if 'FECHADO' in df.columns and df['FECHADO'].dtype != 'datetime64[ns]':
-                    df['FECHADO'] = pd.to_datetime(df['FECHADO'], errors='coerce')
-                
-                # Verificar e corrigir nomes de colunas essenciais
-                essential_columns = {
-                    "Responsável": "Responsável",
-                    "Fase": "Fase",
-                    "LINK ARVORE DA FAMÍLIA PLATAFORMA": "LINK ARVORE DA FAMÍLIA PLATAFORMA"
-                }
-                
-                for col, alias in essential_columns.items():
-                    if col not in df.columns:
-                        st.warning(f"Coluna '{col}' não encontrada nos dados.")
-                        # Tentar encontrar nomes alternativos
-                        alternatives = {
-                            "Responsável": ["ASSIGNED_BY_NAME", "responsible", "owner"],
-                            "Fase": ["STAGE_NAME", "stage", "status"],
-                            "LINK ARVORE DA FAMÍLIA PLATAFORMA": ["LINK_ARVORE", "family_tree_link", "link_arvore"]
-                        }
-                        
-                        for alt in alternatives.get(col, []):
-                            if alt in df.columns:
-                                st.info(f"Usando '{alt}' como substituto para '{col}'.")
-                                df[col] = df[alt]
-                                break
-                        else:
-                            # Se não encontrar uma alternativa, criar coluna vazia
-                            st.warning(f"Criando coluna vazia para '{col}'.")
-                            df[col] = ""
+                if DIAGNOSTICO:
+                    st.success(f"Dados carregados com sucesso. Total de registros: {len(df)}")
+                    st.write("Primeiras 5 linhas:")
+                    st.dataframe(df.head())
                 
                 return df
                 
             except Exception as e:
-                import traceback
-                st.error(f"Erro ao obter dados do Bitrix24: {str(e)}")
-                st.write("Detalhes do erro:", traceback.format_exc())
-                raise e
+                error_msg = f"Erro ao carregar dados do Bitrix24: {str(e)}"
+                st.error(error_msg)
+                if DIAGNOSTICO:
+                    st.error("Detalhes do erro:")
+                    st.code(traceback.format_exc())
+                return pd.DataFrame()  # Retornar DataFrame vazio
 
     @staticmethod
     def _load_from_csv():
