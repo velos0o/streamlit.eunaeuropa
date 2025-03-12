@@ -551,7 +551,10 @@ class ResponsavelDashboard:
                     st.info("Tentando carregar negociações do Bitrix24...")
                 
                 # Obter dados através da integração
-                df = st.session_state.bitrix_integration.get_deals_dataframe()
+                df = st.session_state.bitrix_integration.get_data(
+                    category_id=BITRIX_CATEGORY_ID,
+                    use_cache=True
+                )
                 
                 if df is None or df.empty:
                     if DIAGNOSTICO:

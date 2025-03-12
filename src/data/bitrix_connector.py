@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 import logging
 import streamlit as st
+import sys
 
 # Configuração de logging
 logging.basicConfig(
@@ -12,6 +13,20 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("BitrixConnector")
+
+# Função para verificar se estamos em um ambiente Streamlit ativo
+def is_streamlit_running():
+    """
+    Verifica se estamos em um ambiente Streamlit ativo de forma segura.
+    
+    Returns:
+        True se o ambiente Streamlit estiver ativo, False caso contrário.
+    """
+    try:
+        # Verifica se estamos em um script Streamlit
+        return st._is_running if hasattr(st, '_is_running') else 'streamlit.runtime' in sys.modules
+    except (NameError, AttributeError):
+        return False
 
 class BitrixConnector:
     """
@@ -117,7 +132,7 @@ class BitrixConnector:
                         logger.info(f"URL base usada: {self.base_url}")
                         
                         # Adicionar mensagem na tela para o usuário
-                        if st._is_running:
+                        if is_streamlit_running():
                             st.error(f"Erro na API do Bitrix24: {data.get('error')} - {data.get('error_description', '')}")
                             
                         return None
@@ -129,7 +144,7 @@ class BitrixConnector:
                     logger.error(f"Resposta recebida (primeiros 200 caracteres): {response.text[:200]}")
                     
                     # Adicionar mensagem na tela para o usuário
-                    if st._is_running:
+                    if is_streamlit_running():
                         st.error(f"Erro ao processar resposta do Bitrix24: Formato inválido")
                         st.code(response.text[:500], language="json")
                     
@@ -139,7 +154,7 @@ class BitrixConnector:
                 logger.error(f"Resposta de erro: {response.text}")
                 
                 # Adicionar mensagem na tela para o usuário
-                if st._is_running:
+                if is_streamlit_running():
                     st.error(f"Erro na conexão com Bitrix24: {response.status_code} - {response.reason}")
                 
                 return None
@@ -151,7 +166,7 @@ class BitrixConnector:
             logger.error(f"Tipo de erro: {error_type}")
             
             # Adicionar mensagem na tela para o usuário
-            if st._is_running:
+            if is_streamlit_running():
                 st.error(f"Falha na conexão com o Bitrix24: {str(e)}")
                 st.info("Verifique se a URL e o token estão corretos e se há conexão com a internet.")
             
@@ -159,7 +174,7 @@ class BitrixConnector:
         except Exception as e:
             logger.error(f"Erro inesperado: {str(e)}")
             # Adicionar mensagem na tela para o usuário
-            if st._is_running:
+            if is_streamlit_running():
                 st.error(f"Erro inesperado: {str(e)}")
             
             return None
