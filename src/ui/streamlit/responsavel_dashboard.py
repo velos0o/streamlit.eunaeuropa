@@ -38,6 +38,37 @@ def formatar_numero(valor):
     except:
         return str(valor)
 
+# Função para gerar link de download para arquivo Excel
+def get_excel_download_link(df, filename="dados.xlsx", text="Baixar Excel"):
+    """
+    Gera um link HTML para download de um DataFrame como arquivo Excel.
+    
+    Args:
+        df: DataFrame a ser exportado
+        filename: Nome do arquivo para download
+        text: Texto a ser exibido no link
+        
+    Returns:
+        String HTML com o link para download
+    """
+    # Criar buffer em memória
+    output = io.BytesIO()
+    
+    # Salvar DataFrame como Excel no buffer
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Dados')
+    
+    # Configurar o buffer para leitura
+    output.seek(0)
+    
+    # Codificar em base64
+    b64 = base64.b64encode(output.read()).decode()
+    
+    # Gerar o link HTML
+    href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{filename}" class="download-btn">{text}</a>'
+    
+    return href
+
 # Configurações do Bitrix24
 BITRIX_BASE_URL = os.environ.get("BITRIX_BASE_URL", "https://eunaeuropacidadania.bitrix24.com.br/bitrix/tools/biconnector/pbi.php")
 BITRIX_TOKEN = os.environ.get("BITRIX_TOKEN", "RuUSETRkbFD3whitfgMbioX8qjLgcdPubrr")
