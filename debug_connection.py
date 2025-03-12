@@ -114,7 +114,7 @@ with st.expander("Carregamento de configurações", expanded=True):
     if not final_base_url:
         final_base_url = "https://eunaeuropacidadania.bitrix24.com.br/bitrix/tools/biconnector/pbi.php"
     if not final_token:
-        final_token = "0z1rgUWgNbR0e53G7T88D9A1gkDWGly7br"
+        final_token = "RuUSETRkbFD3whitfgMbioX8qjLgcdPubrr"
     
     st.write("URL base final:", final_base_url[:20] + "..." if len(final_base_url) > 20 else final_base_url)
     st.write("Token final:", "✓ Configurado" if final_token else "✗ Não configurado")

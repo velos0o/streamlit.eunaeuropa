@@ -50,7 +50,7 @@ DATABASE_CONFIG = {
 # Configurações do Bitrix24
 BITRIX_CONFIG = {
     'base_url': 'https://eunaeuropacidadania.bitrix24.com.br/bitrix/tools/biconnector/pbi.php',
-    'token': '0z1rgUWgNbR0e53G7T88D9A1gkDWGly7br',
+    'token': 'RuUSETRkbFD3whitfgMbioX8qjLgcdPubrr',
     'timeout': 30,
     'max_retries': 3
 }

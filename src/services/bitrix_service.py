@@ -10,7 +10,7 @@ class BitrixService:
     
     # Configurações do Bitrix24
     BITRIX_BASE_URL = "https://eunaeuropacidadania.bitrix24.com.br/bitrix/tools/biconnector/pbi.php"
-    BITRIX_TOKEN = "0z1rgUWgNbR0e53G7T88D9A1gkDWGly7br"
+    BITRIX_TOKEN = "RuUSETRkbFD3whitfgMbioX8qjLgcdPubrr"
     
     def consultar_bitrix(self, table: str, filtros: Optional[Dict[str, Any]] = None, 
                          max_retries: int = 3, timeout: int = 30) -> Optional[List[List[Any]]]:

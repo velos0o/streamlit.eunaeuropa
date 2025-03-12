@@ -37,8 +37,8 @@ def formatar_numero(valor):
         return str(valor)
 
 # Configurações do Bitrix24
-BITRIX_BASE_URL = os.environ.get("BITRIX_BASE_URL", "")
-BITRIX_TOKEN = os.environ.get("BITRIX_TOKEN", "")
+BITRIX_BASE_URL = os.environ.get("BITRIX_BASE_URL", "https://eunaeuropacidadania.bitrix24.com.br/bitrix/tools/biconnector/pbi.php")
+BITRIX_TOKEN = os.environ.get("BITRIX_TOKEN", "RuUSETRkbFD3whitfgMbioX8qjLgcdPubrr")
 BITRIX_CATEGORY_ID = int(os.environ.get("BITRIX_CATEGORY_ID", 34))
 
 # Definir se a integração com Bitrix24 está disponível

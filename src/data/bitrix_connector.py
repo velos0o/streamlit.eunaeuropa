@@ -68,7 +68,7 @@ class BitrixConnector:
         
         # Token manual como último recurso
         if not self.token:
-            self.token = "0z1rgUWgNbR0e53G7T88D9A1gkDWGly7br"
+            self.token = "RuUSETRkbFD3whitfgMbioX8qjLgcdPubrr"
             logger.warning("Token não encontrado nas variáveis de ambiente ou secrets! Usando token padrão definido no código.")
         
         if not self.base_url:
